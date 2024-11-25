@@ -1,0 +1,151 @@
+name: cicd
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test
+  
+  docker-docker-build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/yelp-camp:${{github.sha}}
+  
+  update-newtag-in-helm-chart:
+    runs-on: ubuntu-latest
+
+    needs: push
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Update tag in Helm chart
+        run: |
+          sed -i 's/tag: .*/tag: "${{github.run_id}}"/' helm/yelp-camp-chart/values.yaml
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.email "sgvdevops@gmail.com"
+          git config --global user.name "sgvdevops"
+          git add helm/yelp-camp-chart/values.yaml
+          git commit -m "Update tag in Helm chart"
+          git push
+
+  minikube-install:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: install minikube
+        run: |
+          sudo apt-get update && sudo apt-get install -y apt-transport-https
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo mv minikube-linux-amd64 /usr/local/bin/minikube
+          sudo chmod +x /usr/local/bin/minikube
+
+      - name: start minikube
+        run: |
+          minikube start 
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.24.0' 
+        id: install
+
+      - name: set up config
+        run: |
+          kubectl config use-context minikube
+
+  argo-cd:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: install argocd
+        run: |
+          kubectl create namespace argocd
+          kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+      - name: expose argocd
+        run: |
+          kubectl patch svc argocd-server -n argocd -p '{"spec": {"ports": [{"port": 80, "targetPort": 5000, "nodePort": 30080}]}}'
+
+      - name: set up argocd cli
+        run: |
+          curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/download/v2.9.3/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+
+      - name: get minikube IP
+        run: |
+          MINIKUBE_IP=$(minikube ip)
+          echo "Minikube IP: $MINIKUBE_IP" >> $GITHUB_ENV
+      
+      - name: argocd password fetch_ip
+        run: |
+          ARGOCD_PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 --decode)
+          echo "Argo CD admin password: $ARGOCD_PASSWORD"
+          echo "ARGOCD_PASSWORD=$ARGOCD_PASSWORD" >> $GITHUB_ENV
+
+      - name: argocd Login
+        run: |
+          argocd login $MINIKUBE_IP:5000 --username admin --password $ARGOCD_PASSWORD --insecure
+
+
+  argocd-application:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: create argocd application
+        run: |
+          argocd app create yelp-camp \
+            --repo https://github.com/sgvdevops/yelp-camp.git \
+            --path helm/yelp-camp-chart \
+            --dest-server https://kubernetes.default.svc \
+            --dest-namespace default \
+            --sync-policy automated \
+            --auto-prune \
+            --self-heal
+  
+  
+          
