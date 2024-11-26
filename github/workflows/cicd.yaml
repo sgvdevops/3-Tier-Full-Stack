@@ -72,26 +72,3 @@ jobs:
           git add helm/yelp-camp-chart/values.yaml
           git commit -m "Update tag in Helm chart"
           git push
-
-  minikube-install:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: install minikube
-        run: |
-          sudo apt-get update && sudo apt-get install -y apt-transport-https
-          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-          sudo mv minikube-linux-amd64 /usr/local/bin/minikube
-          sudo chmod +x /usr/local/bin/minikube
-
-      - name: start minikube
-        run: |
-          minikube start 
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: 'v1.24.0' 
-        id: install
-
-  
