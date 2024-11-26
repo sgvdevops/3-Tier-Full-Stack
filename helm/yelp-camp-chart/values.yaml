@@ -1,1 +1,10 @@
+replicaCount: 1
 
+image:
+  repository: visputesagarg/yelp-camp:v1
+  tag: v1
+  pullPolicy: IfNotPresent
+
+service:
+  type: nodePort
+  port: 3000
