@@ -1,0 +1,17 @@
+# Node.js specific files
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment files
+.env
+.env.*
+
+# Git files
+.git
+.gitignore
+
+github/
+helm/
+Manifests/
+README.md
