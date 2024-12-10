@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: visputesagarg/yelp-camp:v1
+  repository: visputesagarg/yelp-camp
   tag: v1
   pullPolicy: IfNotPresent
 
